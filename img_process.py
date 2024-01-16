@@ -1,5 +1,5 @@
 import numpy as np
-import pydicom
+# import pydicom
 import matplotlib.pyplot as plt
 from skimage.transform import radon, iradon, rescale
 import SimpleITK as sitk
@@ -41,6 +41,7 @@ plt.show()
 
 """
 
+
 def img2sino(image, L, views, circle=False, visualize=False):
     image = rescale(image, scale=L / min(image.shape), mode='reflect', channel_axis=None)
     theta = np.linspace(0, 180, views, endpoint=False)
@@ -62,13 +63,14 @@ def img2sino(image, L, views, circle=False, visualize=False):
     return sinogram
 
 
-def sino2img(sinogram, image=None, circle=False, visualize=False):
+def sino2img(sinogram, gt_image=None, circle=False, visualize=False):
     theta = np.linspace(0, 180, sinogram.shape[1], endpoint=False)
     reconstruction_fbp = iradon(radon_image=sinogram, theta=theta, filter_name='ramp', circle=circle)
     if visualize:
-        if image is not None:
-            image = rescale(image, scale=reconstruction_fbp.shape[0] / image.shape[0], mode='reflect', channel_axis=None)
-            error = reconstruction_fbp - image
+        if gt_image is not None:
+            gt_image = rescale(gt_image, scale=reconstruction_fbp.shape[0] / gt_image.shape[0], mode='reflect',
+                               channel_axis=None)
+            error = reconstruction_fbp - gt_image
             print(f'FBP rms reconstruction error: {np.sqrt(np.mean(error ** 2)):.3g}')
         imkwargs = dict(vmin=-0.2, vmax=0.2)
 
@@ -76,16 +78,18 @@ def sino2img(sinogram, image=None, circle=False, visualize=False):
                                        sharex=True, sharey=True)
         ax1.set_title("Reconstruction\nFiltered back projection")
         ax1.imshow(reconstruction_fbp, cmap=plt.cm.Greys_r)
-        if image is not None:
+        if gt_image is not None:
             ax2.set_title("Reconstruction error\nFiltered back projection")
-            ax2.imshow(reconstruction_fbp - image, cmap=plt.cm.Greys_r, **imkwargs)
+            ax2.imshow(reconstruction_fbp - gt_image, cmap=plt.cm.Greys_r, **imkwargs)
         plt.show()
     return reconstruction_fbp
 
 
 if __name__ == '__main__':
     src = "../SCOPE/data/gt_img.nii"
+    # src = "E:/work/TCIA/manifest-1704284681625/LDCT-and-Projection-data/C001/1.2.840.113713.4.100.1.2.110644788119750551356682561800775/1.2.840.113713.4.100.1.2.719060684113555115309634524032775/1-011.dcm"
     image = sitk.GetArrayFromImage(sitk.ReadImage(src))
+    # image = image[0]
     L = 367
     views = 180
     sinogram = img2sino(image, L, views, visualize=True)
