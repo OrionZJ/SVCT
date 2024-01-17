@@ -5,13 +5,12 @@ import SimpleITK as sitk
 from torch.utils.data import Dataset
 
 
-def construct_coordinate(sample_points_num, view):
-    view = np.deg2rad(view)
-    x = np.linspace(-1, 1, sample_points_num, endpoint=False)
-    y = np.linspace(-1, 1, sample_points_num, endpoint=False)
+def construct_coordinate(sample_points_num, theta):
+    x = np.linspace(-1, 1, sample_points_num)
+    y = np.linspace(-1, 1, sample_points_num)
     X, Y = np.meshgrid(x, y, indexing='ij')  # 注意indexing方式 -------> 方向
-    rotation_matrix = np.array([[np.cos(view), -np.sin(view)],
-                               [np.sin(view), np.cos(view)]])
+    rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],
+                                [np.sin(theta), np.cos(theta)]])
 
     # 使用numpy的向量化操作提取每一个坐标点对
     coords = np.column_stack((X.ravel(), Y.ravel())).T
@@ -26,33 +25,35 @@ class SinogramDataset(Dataset):
             print("Sinogram path not given!")
             sys.exit(1)
         self.train = train
-        self.sinogram = sitk.GetArrayFromImage(sitk.ReadImage(sino_path))
+        if self.train:
+            self.sinogram = sitk.GetArrayFromImage(sitk.ReadImage(sino_path))
         self.sample_points_num = sample_points_num
         self.views = views
         self.sample_N = sample_N
         rays = []
         intensities = []
+        angles = np.linspace(0, np.pi, self.views, endpoint=False)
         for i in range(views):
-            rays.append(construct_coordinate(sample_points_num, i))
-            intensities.append(self.sinogram[i, :])
+            rays.append(construct_coordinate(sample_points_num, angles[i]))
+            if self.train:
+                intensities.append(self.sinogram[i, :])
         self.rays = np.array(rays)
         self.intensities = np.array(intensities)
+        pass
 
     def __len__(self):
         return len(self.rays)
 
     def __getitem__(self, index):
         ray = self.rays[index]
-        intensity = self.intensities[index]
         if self.train:
+            intensity = self.intensities[index]
             sample_idx = np.random.choice(len(ray), size=self.sample_N, replace=False)
             ray_sample = ray[sample_idx]
             intensity_sample = intensity[sample_idx]
             return ray_sample, intensity_sample
         else:
-            return ray, intensity
-
-
+            return ray
 
 
 if __name__ == '__main__':
