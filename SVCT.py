@@ -26,8 +26,7 @@ except ImportError:
 def get_args():
     parser = argparse.ArgumentParser(description="Training model with PyTorch bindings.")
 
-    # parser.add_argument("sino_path", nargs="?", default="data/90_sino.nii", help="Image to input")
-    parser.add_argument("--config", nargs="?", default="config.json", help="JSON config for model")
+    parser.add_argument("-c", "--config", nargs="?", default="config.json", help="JSON config for model")
 
     args = parser.parse_args()
     return args
@@ -39,53 +38,95 @@ class SVCT:
         config_path = self.args.config
         with open(config_path) as (config_file):
             self.config = json.load(config_file)
+        config = self.config
+        self.sv_sino_in_path = config["file"]["sv_sino_in_path"]
+        self.dv_sino_out_path = config["file"]["dv_sino_out_path"]
+        self.model_path = config["file"]["model_path"]
+        self.sv_views = config["file"]["num_sv"]
+        self.dv_views = config["file"]["num_dv"]
+        self.sample_points_num = config["file"]["L"]
+        self.lr = config["train"]["lr"]
+        self.epochs = config["train"]["epoch"]
+        self.summary_epoch = config["train"]["summary_epoch"]
+        self.sample_N = config["train"]["sample_N"]
+        self.batch_size = config["train"]["batch_size"]
+        self.device = torch.device(
+            'cuda:{}'.format(str(self.config["train"]["gpu"]) if torch.cuda.is_available() else 'cpu'))
 
     def learning_the_implicit_function(self):
-        config = self.config
-        sv_sino_in_path = config["file"]["sv_sino_in_path"]
-        dv_sino_out_path = config["file"]["dv_sino_out_path"]
-        model_path = config["file"]["model_path"]
-        sv_views = config["file"]["num_sv"]
-        dv_views = config["file"]["num_dv"]
-        sample_points_num = config["file"]["L"]
-        lr = config["train"]["lr"]
-        epochs = config["train"]["epoch"]
-        summary_epoch = config["train"]["summary_epoch"]
-        sample_N = config["train"]["sample_N"]
-        batch_size = config["train"]["batch_size"]
-        train_data = DataLoader(SinogramDataset(sample_points_num=sample_points_num, views=sv_views, sample_N=sample_N,
-                                                sino_path=sv_sino_in_path, train=True), batch_size=batch_size,
-                                shuffle=True)
-        device = torch.device('cuda:{}'.format(str(config["train"]["gpu"]) if torch.cuda.is_available() else 'cpu'))
-        model = tcnn.NetworkWithInputEncoding(n_input_dims=2, n_output_dims=1, encoding_config=config["encoding"],
-                                              network_config=config["network"]).to(device)
+        train_data = DataLoader(
+            SinogramDataset(sample_points_num=self.sample_points_num, views=self.sv_views, sample_N=self.sample_N,
+                            sino_path=self.sv_sino_in_path, train=True), batch_size=self.batch_size,
+            shuffle=True)
+
+        model = tcnn.NetworkWithInputEncoding(n_input_dims=2, n_output_dims=1, encoding_config=self.config["encoding"],
+                                              network_config=self.config["network"]).to(self.device)
         loss_fn = torch.nn.L1Loss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        optimizer = torch.optim.Adam(params=(model.parameters()), lr=self.lr)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
-        model.train()
-        loop = tqdm(range(epochs), leave=True)
+        loop = tqdm(range(self.epochs), leave=True)
         for epoch in loop:
+            model.train()
             train_loss = 0
             batches = len(train_data)
             for batch, (ray, intensity) in enumerate(train_data):
                 grid = ray.shape[2]
-                ray = ray.ravel().reshape(-1, 2).to(device)
-                intensity = intensity.to(device)
+                ray = ray.reshape(-1, 2).to(self.device)
+                intensity = intensity.to(self.device)
                 pred = model(ray)
-                pred = pred.reshape(batch_size, sample_N, grid)
-                pred = torch.sum(pred, dim=2, keepdim=False)  # summation operate
+                pred = pred.view(self.batch_size, self.sample_N, grid)
+                pred = torch.sum(pred, dim=2)  # summation operate
                 loss = loss_fn(pred, intensity)
+                optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                optimizer.zero_grad()
-                train_loss += loss
+                train_loss += loss.item()
             scheduler.step()
-            loop.set_description(f'Epoch [{epoch}/{epochs}]')
-            loop.set_postfix(loss=train_loss.item() / batches, lr=scheduler.get_last_lr())
-            if (epoch + 1) % summary_epoch == 0:
-                torch.save(model.state_dict(), model_path)
+            loop.set_description(f'Epoch: [{epoch + 1}/{self.epochs}]')
+            loop.set_postfix(loss=train_loss / batches, lr=scheduler.get_last_lr()[0])
+            if (epoch + 1) % self.summary_epoch == 0:
+                torch.save(model.state_dict(), self.model_path)
+                print("\nCheckpoint save to path: {}".format(self.model_path))
+        torch.save(model.state_dict(), self.model_path)
+        print("\nFinal model save to path: {}".format(self.model_path))
+
+    def re_projection_reconstruction(self):
+        sv_sinogram = sitk.GetArrayFromImage(sitk.ReadImage(self.sv_sino_in_path))
+        test_data = DataLoader(
+            SinogramDataset(sample_points_num=self.sample_points_num, views=self.dv_views, sample_N=self.sample_N,
+                            sino_path=self.sv_sino_in_path, train=False), batch_size=self.batch_size,
+            shuffle=False)
+        model = tcnn.NetworkWithInputEncoding(n_input_dims=2, n_output_dims=1, encoding_config=self.config["encoding"],
+                                              network_config=self.config["network"]).to(self.device)
+        model.load_state_dict(torch.load(self.model_path))
+        model.eval()
+        batches = len(test_data)
+        intensities = []
+        with torch.no_grad():
+            loop = tqdm(enumerate(test_data), total=batches, leave=True)
+            for batch, ray in loop:
+                grid = ray.shape[2]
+                ray = ray.reshape(-1, 2).to(self.device)
+                pred = model(ray)
+                pred = pred.reshape(-1, grid, grid)
+                pred = torch.sum(pred, dim=2, keepdim=False)  # summation operate
+                intensities.extend(pred.cpu().numpy().tolist())
+                loop.set_description(f'Reconstructing views: [{(batch + 1) * 3}/{batches * 3}]')
+        intensities = np.array(intensities)
+
+        # projection swapping
+        swap_idx = np.rint(np.linspace(0, self.dv_views - 1, self.sv_views))
+        for i, idx in enumerate(swap_idx):
+            intensities[int(idx)] = sv_sinogram[i]
+        dv_sino = sitk.GetImageFromArray(intensities)
+        save_path = self.dv_sino_out_path + "/%s_recon_sino.nii" % self.dv_views
+        sitk.WriteImage(dv_sino, save_path)
+        print("\nReconstructed sinogram save to path: {}".format(save_path))
 
 
 if __name__ == "__main__":
-    model = SVCT(get_args())
+    args = get_args()
+    model = SVCT(args)
+
     model.learning_the_implicit_function()
+    model.re_projection_reconstruction()
