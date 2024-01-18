@@ -8,8 +8,10 @@ import commentjson as json
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from skimage.metrics import structural_similarity, peak_signal_noise_ratio
 
 from dataset import SinogramDataset
+import utils
 
 try:
     import tinycudann as tcnn
@@ -26,8 +28,10 @@ except ImportError:
 def get_args():
     parser = argparse.ArgumentParser(description="Training model with PyTorch bindings.")
 
-    parser.add_argument("-c", "--config", nargs="?", default="config.json", help="JSON config for model")
-
+    parser.add_argument('-c', '--config', nargs='?', default='config.json', help='JSON config for model')
+    parser.add_argument('-t', '--train', action='store_true', help='Enable training mode')
+    parser.add_argument('-r', '--reproject', action='store_true', help='Enable reprojection mode')
+    parser.add_argument('-e', '--evaluate', action='store_true', help='Enable evaluation mode')
     args = parser.parse_args()
     return args
 
@@ -123,10 +127,39 @@ class SVCT:
         sitk.WriteImage(dv_sino, save_path)
         print("\nReconstructed sinogram save to path: {}".format(save_path))
 
+    def evaluation(self):
+        gt_path = "data/gt_img.nii"
+        save_path = self.dv_sino_out_path + "/%s_recon_sino.nii" % self.dv_views
+        gt = sitk.GetArrayFromImage(sitk.ReadImage(gt_path))
+        sino = sitk.GetArrayFromImage(sitk.ReadImage(save_path))
+        image = utils.sino2img(sino, gt, visualize=True)
+
+        data_range = np.max(gt) - np.min(gt)
+        psnr = peak_signal_noise_ratio(gt, image, data_range=data_range)
+        ssim = structural_similarity(image, gt, data_range=data_range)
+        print('PSNR:', psnr, 'SSIM:', ssim)
+        
 
 if __name__ == "__main__":
     args = get_args()
     model = SVCT(args)
+    if args.train:
+        print("Training mode enabled.")
+        model.learning_the_implicit_function()
 
-    model.learning_the_implicit_function()
-    model.re_projection_reconstruction()
+    if args.reproject:
+        print("Re-projection mode enabled.")
+        model.re_projection_reconstruction()
+
+    if args.evaluate:
+        print("Evaluation mode enabled.")
+        model.evaluation()
+
+    if not any([args.train, args.reproject, args.evaluate]):
+        print("Please select a mode: --train, --reproject, or --evaluate")
+
+    model.evaluation()
+
+
+
+
