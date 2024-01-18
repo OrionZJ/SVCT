@@ -37,9 +37,7 @@ def get_args():
 
 
 class SVCT:
-    def __init__(self, args):
-        self.args = args
-        config_path = self.args.config
+    def __init__(self, config_path):
         with open(config_path) as (config_file):
             self.config = json.load(config_file)
         config = self.config
@@ -142,7 +140,8 @@ class SVCT:
 
 if __name__ == "__main__":
     args = get_args()
-    model = SVCT(args)
+    config_path = args.config
+    model = SVCT(config_path)
     if args.train:
         print("Training mode enabled.")
         model.learning_the_implicit_function()
@@ -158,7 +157,7 @@ if __name__ == "__main__":
     if not any([args.train, args.reproject, args.evaluate]):
         print("Please select a mode: --train, --reproject, or --evaluate")
 
-    model.evaluation()
+    model.learning_the_implicit_function()
 
 
 
