@@ -1,7 +1,7 @@
 import numpy as np
 # import pydicom
 import matplotlib.pyplot as plt
-from skimage.transform import radon, iradon, rescale, resize
+from skimage.transform import radon, iradon, rescale, resize, rotate
 import SimpleITK as sitk
 
 """
@@ -42,18 +42,19 @@ plt.show()
 """
 
 
-def img2sino(image, L, views, circle=False, visualize=False):
-    image = rescale(image, scale=L / min(image.shape), mode='reflect', channel_axis=None)
-    theta = np.linspace(0, 180, views, endpoint=False)
+def img2sino(image, pixels, views, circle=False, visualize=False):
+    theta = np.linspace(90, 270, views, endpoint=False)
     sinogram = radon(image, theta=theta, circle=circle)
+    sinogram = resize(sinogram, (pixels, views))
+    sinogram = np.rot90(sinogram, 1)
     if visualize:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4.5))
         ax1.set_title("Original")
         ax1.imshow(image, cmap=plt.cm.Greys_r)
-        dx, dy = 0.5 * 180 / views, 0.5 / sinogram.shape[0]
+        dy, dx = 0.5 * 180 / views, 0.5 / sinogram.shape[0]
         ax2.set_title("Radon transform\n(Sinogram)")
-        ax2.set_xlabel("Projection angle (deg)")
-        ax2.set_ylabel("Projection position (pixels)")
+        ax2.set_xlabel("Projection position (pixels)")
+        ax2.set_ylabel("Projection angle (deg)")
         ax2.imshow(sinogram, cmap=plt.cm.Greys_r,
                    extent=(-dx, 180 + dx, -dy, sinogram.shape[0] + dy),
                    aspect='auto')
@@ -64,8 +65,9 @@ def img2sino(image, L, views, circle=False, visualize=False):
 
 
 def sino2img(sinogram, gt_image=None, circle=False, visualize=False):
-    theta = np.linspace(0, 180, sinogram.shape[1], endpoint=False)
-    reconstruction_fbp = iradon(radon_image=sinogram, theta=theta, filter_name='ramp', circle=circle)
+    sinogram = np.rot90(sinogram, -1)
+    theta = np.linspace(90, 270, sinogram.shape[1], endpoint=False)
+    reconstruction_fbp = iradon(radon_image=sinogram, theta=theta, filter_name='hann', circle=circle)
     if gt_image is not None:
         reconstruction_fbp = resize(reconstruction_fbp, (gt_image.shape[0], gt_image.shape[1]))
     if visualize:

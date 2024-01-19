@@ -2,6 +2,7 @@
 	"file": {
 		"sv_sino_in_path": "data/90_sino.nii",
 		"dv_sino_out_path": "output/sino",
+		"dv_img_out_path": "output/img",
 		"model_path": "model/checkpoint.pth",
 		"num_sv": 90,
 		"num_dv": 720,

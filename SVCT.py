@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 import time
 
@@ -32,6 +33,7 @@ def get_args():
     parser.add_argument('-t', '--train', action='store_true', help='Enable training mode')
     parser.add_argument('-r', '--reproject', action='store_true', help='Enable reprojection mode')
     parser.add_argument('-e', '--evaluate', action='store_true', help='Enable evaluation mode')
+    parser.add_argument('-f', '--fbp', action='store_true', help='Enable FBP')
     args = parser.parse_args()
     return args
 
@@ -43,6 +45,7 @@ class SVCT:
         config = self.config
         self.sv_sino_in_path = config["file"]["sv_sino_in_path"]
         self.dv_sino_out_path = config["file"]["dv_sino_out_path"]
+        self.dv_img_out_path = config["file"]["dv_img_out_path"]
         self.model_path = config["file"]["model_path"]
         self.sv_views = config["file"]["num_sv"]
         self.dv_views = config["file"]["num_dv"]
@@ -125,21 +128,37 @@ class SVCT:
         sitk.WriteImage(dv_sino, save_path)
         print("\nReconstructed sinogram save to path: {}".format(save_path))
 
-    def evaluation(self):
-        gt_path = "data/gt_img.nii"
-        save_path = self.dv_sino_out_path + "/%s_recon_sino.nii" % self.dv_views
+    def FBP(self, circle=False):
+        sino_path = self.dv_sino_out_path
+        img_output_path = self.dv_img_out_path
+
+        # 遍历指定目录下的所有.nii文件
+        for filename in os.listdir(sino_path):
+            if filename.endswith('.nii'):
+                # 读取文件
+                file_path = os.path.join(sino_path, filename)
+                sino = sitk.GetArrayFromImage(sitk.ReadImage(file_path))
+                img = sitk.GetImageFromArray(utils.sino2img(sino, circle=circle))
+                save_path = os.path.join(img_output_path,
+                                         filename.replace("sino", "img") if "sino" in filename else filename)
+                sitk.WriteImage(img, save_path)
+
+    def evaluation(self, gt_path="data/gt_img.nii", img_path=None):
         gt = sitk.GetArrayFromImage(sitk.ReadImage(gt_path))
-        sino = sitk.GetArrayFromImage(sitk.ReadImage(save_path))
-        image = utils.sino2img(sino, gt, visualize=True)
+        if img_path is None:
+            img_path = self.dv_sino_out_path + "/%s_recon_sino.nii" % self.dv_views
+            sino = sitk.GetArrayFromImage(sitk.ReadImage(img_path))
+            image = utils.sino2img(sino, gt, visualize=True)
+        else:
+            image = sitk.GetArrayFromImage(sitk.ReadImage(img_path))
 
         data_range = np.max(gt) - np.min(gt)
         psnr = peak_signal_noise_ratio(gt, image, data_range=data_range)
         ssim = structural_similarity(image, gt, data_range=data_range)
         print('PSNR:', psnr, 'SSIM:', ssim)
-        
 
-if __name__ == "__main__":
-    args = get_args()
+
+def main(args):
     config_path = args.config
     model = SVCT(config_path)
     if args.train:
@@ -154,11 +173,14 @@ if __name__ == "__main__":
         print("Evaluation mode enabled.")
         model.evaluation()
 
+    if args.fbp:
+        print("FBP enabled.")
+        model.FBP()
+
     if not any([args.train, args.reproject, args.evaluate]):
         print("Please select a mode: --train, --reproject, or --evaluate")
 
-    model.learning_the_implicit_function()
 
-
-
-
+if __name__ == "__main__":
+    args = get_args()
+    main(args)
