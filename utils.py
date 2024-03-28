@@ -1,24 +1,47 @@
 import numpy as np
-# import pydicom
+import pydicom
 import matplotlib.pyplot as plt
 from skimage.transform import radon, iradon, rescale, resize, rotate
 import SimpleITK as sitk
 
-"""
-# 读取dcm文件  
-src = 'manifest-1704460560034/LDCT-and-Projection-data/C004/12-23-2021-NA-NA-40816/1.000000-Full Dose Images-73627/1-048.dcm'  
-my_dcm = pydicom.dcmread(src)  
 
-info18 = my_dcm.WindowCenter
-info19 = my_dcm.WindowWidth
-info20 = my_dcm.RescaleIntercept
-info21 = my_dcm.RescaleSlope
-info22 = my_dcm.pixel_array
+def read_dcm_file(file_path):
+    """读取DCM文件并返回pydicom对象"""
+    return pydicom.dcmread(file_path)
 
-ct_image = info21 * info22 + info20
 
-'''调窗'''
-def adjustMethod1(data_resampled,w_width,w_center):
+def extract_dcm_info(dcm_obj):
+    """从pydicom对象中提取所需信息"""
+    info = {
+        'WindowCenter': dcm_obj.WindowCenter,
+        'WindowWidth': dcm_obj.WindowWidth,
+        'RescaleIntercept': dcm_obj.RescaleIntercept,
+        'RescaleSlope': dcm_obj.RescaleSlope,
+        'pixel_array': dcm_obj.pixel_array
+    }
+    return info
+
+
+def compute_ct_image(info):
+    """根据提取的信息计算CT图像"""
+    ct_image = info['RescaleSlope'] * info['pixel_array'] + info['RescaleIntercept']
+    return ct_image
+
+
+def setDicomWinWidthWinCenter(data_resampled, info):
+    w_width = info['WindowWidth']
+    w_center = info['WindowCenter']
+    """设置CT图像的窗宽和窗位"""
+    if isinstance(w_width, int):
+        pass
+    elif w_width.__class__.__name__ == 'MultiValue':
+        w_width = (w_width[0] + w_width[1]) / 2
+
+    if isinstance(w_center, int):
+        pass
+    elif w_center.__class__.__name__ == 'MultiValue':
+        w_center = (w_center[0] + w_center[1]) / 2
+
     val_min = w_center - (w_width / 2)
     val_max = w_center + (w_width / 2)
     data_adjusted = data_resampled.copy()
@@ -27,19 +50,12 @@ def adjustMethod1(data_resampled,w_width,w_center):
     return data_adjusted
 
 
-plt.figure(figsize=(10, 10))
-plt.axis('off')
-plt.imshow(ct_image,'gray')
-plt.show()
-
-ct_image = adjustMethod1(ct_image, info19, info18)
-
-plt.figure(figsize=(10, 10)) # 适配屏幕
-plt.axis('off')
-plt.imshow(ct_image,'gray')
-plt.show()
-
-"""
+def display_image(image, figsize=(10, 10)):
+    """显示图像"""
+    plt.figure(figsize=figsize)
+    plt.axis('off')
+    plt.imshow(image, 'gray')
+    plt.show()
 
 
 def img2sino(image, pixels, views, circle=False, visualize=False):
@@ -90,6 +106,8 @@ def sino2img(sinogram, gt_image=None, circle=False, visualize=False):
 
 
 if __name__ == '__main__':
+    """
+    # 测试nii读取
     src = "../SCOPE/data/gt_img.nii"
     # src = "E:/work/TCIA/manifest-1704284681625/LDCT-and-Projection-data/C001/1.2.840.113713.4.100.1.2.110644788119750551356682561800775/1.2.840.113713.4.100.1.2.719060684113555115309634524032775/1-011.dcm"
     image = sitk.GetArrayFromImage(sitk.ReadImage(src))
@@ -98,3 +116,16 @@ if __name__ == '__main__':
     views = 180
     sinogram = img2sino(image, L, views, visualize=True)
     sino2img(sinogram, image, visualize=True)
+    """
+
+    # 测试读取dcm文件
+    path = "E:/work/CT Medical Images_datasets/CT Medical Images_datasets/CT Medical Images_dicom_dir_datasets/"
+    id = "ID_0004_AGE_0056_CONTRAST_1_CT.dcm"
+    src = path + id
+    # src = "E:/work/TCIA/manifest-1704460560034/LDCT-and-Projection-data/C009/02-04-2022-NA-NA-40176/302.000000-Full Dose Images-52856/1-026.dcm"
+
+    my_dcm = read_dcm_file(src)
+    info = extract_dcm_info(my_dcm)
+    ct_image = compute_ct_image(info)
+    # ct_image = setDicomWinWidthWinCenter(ct_image, info)
+    display_image(ct_image)

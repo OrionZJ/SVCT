@@ -29,7 +29,7 @@ except ImportError:
 def get_args():
     parser = argparse.ArgumentParser(description="Training model with PyTorch bindings.")
 
-    parser.add_argument('-c', '--config', nargs='?', default='config.json', help='JSON config for model')
+    parser.add_argument('-c', '--config', nargs='?', default='config.json', help='JSON config path for model')
     parser.add_argument('-t', '--train', action='store_true', help='Enable training mode')
     parser.add_argument('-r', '--reproject', action='store_true', help='Enable reprojection mode')
     parser.add_argument('-e', '--evaluate', action='store_true', help='Enable evaluation mode')
@@ -177,7 +177,7 @@ def main(args):
         print("FBP enabled.")
         model.FBP()
 
-    if not any([args.train, args.reproject, args.evaluate]):
+    if not any([args.train, args.reproject, args.evaluate, args.fbp]):
         print("Please select a mode: --train, --reproject, or --evaluate")
 
 
