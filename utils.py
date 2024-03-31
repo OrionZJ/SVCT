@@ -59,6 +59,8 @@ def display_image(image, figsize=(10, 10)):
 
 
 def img2sino(image, pixels, views, circle=False, visualize=False):
+    # 归一化到0到1范围
+    # image = (image - image.min()) / (image.max() - image.min())
     theta = np.linspace(90, 270, views, endpoint=False)
     sinogram = radon(image, theta=theta, circle=circle)
     sinogram = resize(sinogram, (pixels, views))
@@ -111,16 +113,18 @@ if __name__ == '__main__':
     src = "../SCOPE/data/gt_img.nii"
     # src = "E:/work/TCIA/manifest-1704284681625/LDCT-and-Projection-data/C001/1.2.840.113713.4.100.1.2.110644788119750551356682561800775/1.2.840.113713.4.100.1.2.719060684113555115309634524032775/1-011.dcm"
     image = sitk.GetArrayFromImage(sitk.ReadImage(src))
+    
     # image = image[0]
     L = 367
     views = 180
     sinogram = img2sino(image, L, views, visualize=True)
     sino2img(sinogram, image, visualize=True)
-    """
 
+
+    """
     # 测试读取dcm文件
     path = "E:/work/CT Medical Images_datasets/CT Medical Images_datasets/CT Medical Images_dicom_dir_datasets/"
-    id = "ID_0004_AGE_0056_CONTRAST_1_CT.dcm"
+    id = "ID_0099_AGE_0061_CONTRAST_0_CT.dcm"
     src = path + id
     # src = "E:/work/TCIA/manifest-1704460560034/LDCT-and-Projection-data/C009/02-04-2022-NA-NA-40176/302.000000-Full Dose Images-52856/1-026.dcm"
 
@@ -128,4 +132,19 @@ if __name__ == '__main__':
     info = extract_dcm_info(my_dcm)
     ct_image = compute_ct_image(info)
     # ct_image = setDicomWinWidthWinCenter(ct_image, info)
+    from scipy.ndimage import zoom
+    zoom_factor = 256 / ct_image.shape[0], 256 / ct_image.shape[1]
+    ct_image = zoom(ct_image, zoom_factor, order=3)
+    # 归一化到0到1范围
+    ct_image = (ct_image - ct_image.min()) / (ct_image.max() - ct_image.min())
+
+    sitk.WriteImage(sitk.GetImageFromArray(ct_image), "./data/new_gt_img.nii")
+
     display_image(ct_image)
+
+    sino = img2sino(ct_image, pixels=367, views=90, visualize=True)
+    sino2img(sino, ct_image, visualize=True)
+    sino = sitk.GetImageFromArray(sino)
+    writepath = "./data/new_90_sino.nii"
+    sitk.WriteImage(sino, writepath)
+

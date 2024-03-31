@@ -125,6 +125,8 @@ class SVCT:
             intensities[int(idx)] = sv_sinogram[i]
         dv_sino = sitk.GetImageFromArray(intensities)
         save_path = self.dv_sino_out_path + "/%s_recon_sino.nii" % self.dv_views
+        if not os.path.exists(self.dv_sino_out_path):
+            os.makedirs(self.dv_sino_out_path)
         sitk.WriteImage(dv_sino, save_path)
         print("\nReconstructed sinogram save to path: {}".format(save_path))
 
@@ -143,7 +145,7 @@ class SVCT:
                                          filename.replace("sino", "img") if "sino" in filename else filename)
                 sitk.WriteImage(img, save_path)
 
-    def evaluation(self, gt_path="data/gt_img.nii", img_path=None):
+    def evaluation(self, gt_path="data/gt_img.nii", img_path="output/img/scope_recon.nii"):
         gt = sitk.GetArrayFromImage(sitk.ReadImage(gt_path))
         if img_path is None:
             img_path = self.dv_sino_out_path + "/%s_recon_sino.nii" % self.dv_views
@@ -151,7 +153,10 @@ class SVCT:
             image = utils.sino2img(sino, gt, visualize=True)
         else:
             image = sitk.GetArrayFromImage(sitk.ReadImage(img_path))
-
+        if gt.shape != image.shape:
+            from scipy.ndimage import zoom
+            zoom_factor = gt.shape[0] / image.shape[0], gt.shape[1] / image.shape[1]
+            image = zoom(image, zoom_factor, order=3)
         data_range = np.max(gt) - np.min(gt)
         psnr = peak_signal_noise_ratio(gt, image, data_range=data_range)
         ssim = structural_similarity(image, gt, data_range=data_range)
