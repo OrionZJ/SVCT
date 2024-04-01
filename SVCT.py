@@ -145,7 +145,7 @@ class SVCT:
                                          filename.replace("sino", "img") if "sino" in filename else filename)
                 sitk.WriteImage(img, save_path)
 
-    def evaluation(self, gt_path="data/gt_img.nii", img_path="output/img/scope_recon.nii"):
+    def evaluation(self, gt_path="data/gt_img.nii", img_path=None):
         gt = sitk.GetArrayFromImage(sitk.ReadImage(gt_path))
         if img_path is None:
             img_path = self.dv_sino_out_path + "/%s_recon_sino.nii" % self.dv_views
